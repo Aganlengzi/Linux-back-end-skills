@@ -685,6 +685,7 @@ const_cast:
 1、《离散数学》范围内的一切问题皆由可能被深入问到（这个最坑爹，最重要，最体现功底，最能加分，特别是各类树结构的实现和应用）
 2、各类排序：大根堆的实现，快排（如何避免最糟糕的状态？），bitmap的运用等等
 3、hash， 任何一个技术面试官必问（例如为什么一般hashtable的桶数会取一个素数？如何有效避免hash结果值的碰撞）
+
 五、网络编程：
 1、tcp与udp的区别（必问）
 TCP---传输控制协议,提供的是面向连接、可靠的字节流服务。
@@ -710,20 +711,29 @@ UDP好比发短信，发送者尽管发送，并不知道是否已经发送成�
 说它开销小，主要是指它不需要三次握手建立连接
 
 2、udp调用connect有什么作用？
+TCP的connect会触发三次握手
+而udp的connect只是：
+绑定了对端，内核只会将绑定对象的对端发送来的数据包传给套接口，因此可以在一定环境中提升安全性
+能够提高效率，对端已经确定了：udp不connect情况下的过程是：建立连接发送数据断开连接，循环往复，但是如果绑定了ip和端口，那么中间的断开连接和建立连接可以省去了
+一个已经调用connect的udp可以再次调用udp以指定新的IP地址和端口号或者断开套接口
+（1）UDP中可以使用connect系统调用。
+（2）UDP中connect操作与TCP中connect操作有着本质区别。TCP中调用connect会引起三次握手，client与server建立连结。UDP中调用connect内核仅仅把对端ip&port记录下来。
+（3）UDP中可以多次调用connect，TCP只能调用一次connect。
+
 3、tcp连接中时序图，状态图，必须非常非常熟练
 三次握手：
-A======>B
+A(client)======>B(server)
 SYN:seq=X;				[A:CLOSED-->SYN_SENT; B:CLOSED-->LISTEN]
 SYN:seq=Y ACK:ack=X+1;	[A:SYN_SENT-->ESTABLISED; B:LISTEN-->SYN_RCVD] ACK此时发型的是期望下一次应该接收到的包的序列号：预期确认
 SYN:seq=X+1 ACK:ack=Y+1	[A:ESTABLISHED; B:SYN_RCVD-->ESTABLISHED]
 三次握手使双方建立一种逻辑上的连接，并且使通信双方统一了初始化序列号。
+-------------
 四次挥手：
-A<======>B
-[A:ESTABLISHED-->SYN_SENT; B:CLOSED-->LISTEN]
-[A:CLOSED-->SYN_SENT; B:CLOSED-->LISTEN]
-[A:CLOSED-->SYN_SENT; B:CLOSED-->LISTEN]
-[A:CLOSED-->SYN_SENT; B:CLOSED-->LISTEN]
-SYN:seq=X+1 ACK:ack=Y+1
+A(client)<======>B(server)
+[A:ESTABLISHED-->FIN_WAIT_1; B:ESTABLISHED-->CLOSE_WAIT]
+[A:FIN_WAIT_1-->FIN_WAIT_2; B:CLOSE_WAIT]
+[A:FIN_WAIT_2-->TIME_WAIT; B:CLOSE_WAIT-->LAST_ACK]
+[A:TIME_WAIT-->CLOSED; B:LAST_ACK-->CLOSED]
 
 4、socket服务端的实现，select和epoll的区别(必问)
 IO多路转接（IO多路复用）技术：
@@ -824,7 +834,6 @@ epoll工作在ET模式的时候，必须使用非阻塞套接口，以避免由�
             探测和响应的线程都使用了挂起机制，从而有效防止了线程空转，只占用很少的资源；            
 缺点：难于跨平台
 
-
 （7）开源跨平台事件驱动模型（双线程/阻塞/异步模型/先探测后处理/挂起式阻塞/探测和响应线程分离）
 适用范围：大量并发连接
 优点：跨平台        
@@ -847,6 +856,29 @@ epoll工作在ET模式的时候，必须使用非阻塞套接口，以避免由�
 开源/跨平台
 
 7、tcp结束连接怎么握手，time_wait状态是什么,为什么会有time_wait状态？哪一方会有time_wait状态，如何避免time_wait状态占用资源（必须回答的详细）
+哪一方会有TIME_WAIT状态：
+time_wait状态是TCP/IP状态的一种，通信双方建立TCP链接后，主动关闭连接的一方会进入TIME_WAIT状态
+客户端主动关闭连接时，发送FIN后进入FIN_WAIT_1，接收到server的ACK之后进入FIN_WAIT_2，接收到server的FIN，会发送最后一个ack后，
+然后会进入TIME_WAIT状态，再停留2个MSL时间(后有MSL的解释)，进入CLOSED状态。
+
+为什么会有TIME_WAIT状态存在：
+首先，是为了可靠地实现TCP全双工连接的终止，如果主动发送FIN的一方确认其FIN的ACK之后进入CLOSED状态
+那么只是关闭了一方，如果此时另一方发送FIN，没有人会给它回应对应的ACK状态，会产生错误
+其次，为什么要是2MSL呢？
+是要让关闭的上次连接中的所有的分组都在网络中消逝
+TCP不允许处于TIME_WAIT状态的一方建立新的连接
+如果不是2MSL的话，可能关闭上一个连接之后又建立了新的连接，而残留在网络上的上一次的分组可能影响新的连接
+所以应该等待让上一次残留的分组在网络中消逝殆尽。
+
+MSL就是maximum segment lifetime(最大分节生命期），这是一个IP数据包能在互联网上生存的最长时间，超过这个时间IP数据包将在网络中消失 。MSL在RFC 1122上建议是2分钟，而源自berkeley的TCP实现传统上使用30秒。
+
+TIME_WAIT状态下的socket不能被重新回收利用
+主要占用的资源是fd和端口号
+解决的方法是将TIME_WAIT的等待时间设置更短一些
+一般不会出现这个问题，并且TIME_WAIT状态下并不会占用太多的系统资源，
+可能是软件方面出错，比如没有及时关闭导致的大量TIME_WAIT状态后者是攻击
+应该找出根本原因之后从根本上解决
+尽量让客户端发送主动断开连接请求
 
 8、tcp头多少字节？哪些字段?(必问)
 TCP头20字节：
@@ -867,6 +899,26 @@ TCP基于sequence和ack的预期确认机制每次只能确认一个数据包，
 窗口数决定了当前传输的最大流量。当我们在传输过程中，通信双方可以根据网络条件动态协商窗口大小，调整窗口大小时，即可实现流量控制。（在TCP的每个确认中，除了ACK外，还包括一个窗口通知）
 
 10、connect会阻塞，怎么解决?(必考必问，提示：设置非阻塞，返回之后用select检测状态)
+http://blog.sina.com.cn/s/blog_6592a07a0102v4sk.html
+步骤1： 设置非阻塞，启动连接
+实现非阻塞 connect ，首先把 sockfd 设置成非阻塞的。这样调用connect 可以立刻返回，根据返回值和 errno 处理三种情况：
+(1) 如果返回0，表示 connect 成功。
+(2) 如果返回值小于0，errno为 EINPROGRESS,  表示连接建立已经启动但是尚未完成。这是期望的结果，不是真正的错误。
+(3) 如果返回值小于0，errno不是 EINPROGRESS，则连接出错了。
+ 
+步骤2：判断可读和可写
+然后把 sockfd 加入 select 的读写监听集合，通过 select 判断 sockfd是否可写，处理三种情况：
+(1) 如果连接建立好了，对方没有数据到达，那么 sockfd 是可写的
+(2) 如果在 select 之前，连接就建立好了，而且对方的数据已到达，那么 sockfd 是可读和可写的。
+(3) 如果连接发生错误，sockfd 也是可读和可写的。
+判断 connect 是否成功，就得区别 (2) 和 (3)，这两种情况下 sockfd 都是可读和可写的，区分的方法是，调用 getsockopt 检查是否出错。
+ 
+步骤3：使用 getsockopt 函数检查错误
+getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &error, &len)
+在 sockfd 都是可读和可写的情况下，我们使用 getsockopt 来检查连接是否出错。但这里有一个可移植性的问题。
+如果发生错误，getsockopt 源自 Berkeley 的实现将在变量 error 中返回错误，getsockopt 本身返回0；
+然而 Solaris 却让 getsockopt 返回 -1，并把错误保存在 errno 变量中。所以在判断是否有错误的时候，要处理这两种情况。
+
 11、如果select返回可读，结果只读到0字节，什么情况？
 12、keepalive 是什么东东？如何使用？
 13、列举你所知道的tcp选项，并说明其作用。
@@ -876,7 +928,6 @@ urgent：用于紧急传送数据
 六、db:
 1、mysql，会考sql语言，服务器数据库大规模数据怎么设计，db各种性能指标
 最后2、：补充一个最最重要，最最坑爹，最最有难度的一个题目：一个每秒百万级访问量的互联网服务器，每个访问都有数据计算和I/O操作，如果让你设计，你怎么设计？
-
 
 七、后续添加
 1、面向对象的特性
