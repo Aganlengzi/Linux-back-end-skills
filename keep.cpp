@@ -900,7 +900,7 @@ TCP基于sequence和ack的预期确认机制每次只能确认一个数据包，
 
 10、connect会阻塞，怎么解决?(必考必问，提示：设置非阻塞，返回之后用select检测状态)
 http://blog.sina.com.cn/s/blog_6592a07a0102v4sk.html
-步骤1： 设置非阻塞，启动连接
+步骤1： 设置非阻塞，启动连接4
 实现非阻塞 connect ，首先把 sockfd 设置成非阻塞的。这样调用connect 可以立刻返回，根据返回值和 errno 处理三种情况：
 (1) 如果返回0，表示 connect 成功。
 (2) 如果返回值小于0，errno为 EINPROGRESS,  表示连接建立已经启动但是尚未完成。这是期望的结果，不是真正的错误。
