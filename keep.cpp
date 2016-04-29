@@ -607,6 +607,18 @@ int b[10] = {3}; //只有b[0]被初始化为3，其它都是0
 6、哪些库函数属于高危函数，为什么？（strcpy等等）
 三、c++：
 1、一个String类的完整实现必须很快速写出来（注意：赋值构造，operator=是关键）
+class String
+{
+
+}
+
+
+
+
+
+
+
+
 2、虚函数的作用和实现原理（必问必考，实现原理必须很熟）
 虚函数用于实现面向对象c++语言中的三大特性(封装性继承性和多态性)中的多态
 如果基类希望子类覆盖实现的函数应该声明为虚函数，基类希望子类继承的函数不应该声明为虚函数
@@ -1223,6 +1235,103 @@ struct file_system_type {
 其中rootfs是系统初始化过程中必须要建立的rootfs，是建立根目录的基础
 创建了根目录之后才能将不同的其它实际文件系统挂载到相应的目录上。
 
+
+4、两种信号处理函数设置方式：signal和sigaction
+
+signal函数每次设置具体的信号处理函数(非SIG_IGN)只能生效一次,每次在进程响应处理信号时，随即将信号处理函数恢复为默认处理方式.所以如果想多次相同方式处理某个信号,通常的做法是,在响应函数开始,再次调用signal设置
+int sig_int(); //My signal handler
+int main()
+{
+    ...
+    signal(SIGINT, sig_int);
+    ...
+
+}
+int sig_int()
+{
+    signal(SIGINT, sig_int);
+    ....
+}
+这种方式存在的问题是：
+（1）在上次信号到来并且处理后到下次设置这个信号的处理函数之间会有一个时间窗口，这个时间窗口可能发生同样的信号，这个信号就会被采用默认的处理方式进行处理。
+（2）与sigaction相比，它只能对某个感兴趣的信号设置相应的处理函数，但是不能同时设置进程屏蔽不想处理的函数（可以通过多次调用signal的方式进行设置）
+
+sigaction能够避免上面的两个问题: 
+在信号处理程序被调用时，系统建立的新信号屏蔽字会自动包括正被递送的信号。因此保证了在处理一个给定的信号时，如果这种信号再次发生，那么它会被阻塞到对前一个信号的处理结束为止
+响应函数设置后就一直有效,不会重置
+对除SIGALRM以外的所有信号都企图设置SA_RESTART标志，于是被这些信号中断的系统调用(read,write)都能自动再起动。
+不希望再起动由SIGALRM信号中断的系统调用的原因是希望对I/O操作可以设置时间限制。
+#include <stdio.h>  
+#include <signal.h>  
+  
+void WrkProcess(int nsig)  
+{  
+    printf("WrkProcess .I get signal.%d threadid:%d/n",nsig,pthread_self());  
+    int i=0;  
+    while(i<5){  
+        printf("%d/n",i);  
+        sleep(1);  
+        i++;  
+    }  
+}  
+int main()  
+{  
+    struct sigaction act,oldact;  
+    act.sa_handler  = WrkProcess;  
+//  sigaddset(&act.sa_mask,SIGQUIT);  
+//  sigaddset(&act.sa_mask,SIGTERM)  
+    act.sa_flags = SA_NODEFER | SA_RESETHAND;    
+//  act.sa_flags = 0;  
+  
+    sigaction(SIGINT,&act,&oldact);  
+    printf("main threadid:%d/n",pthread_self());  
+    while(1)sleep(5);  
+    return 0;  
+}
+
+
+所以希望能用相同方式处理信号的多次出现,最好用sigaction.信号只出现并处理一次,可以用signal
+
+
+5、send和recv函数
+send函数：
+int send(SOCKET s,  const char *buf,    int len,    int flags);
+参数描述：
+SOCKET s         发送端套接字描述符
+const char *buf  应用程序要发送的数据的缓冲区(想要发送的数据)
+int len          实际要发送的字节数
+int flags        一般置为0即可
+
+同步Socket的send函数的执行流程如下:
+调用该函数时，send先比较待发送数据的长度len与套接字s的发送缓冲区的长度(区别于buf),如果len大于s的发送缓冲区的长度，则函数返回SOCKET_ERROR；
+如果len小于或者等于s发送缓冲区的长度，那么send先检查协议是否正在发送s的发送缓冲区中的数据:                                                                                                         
+a.如果是在发送，就等待协议将数据发送完毕。                                                       
+b.如果没有开始发送s的缓冲区中的数据，那么send就比较s的发送缓冲区的剩余空间和len的大小:                  
+  如果len大于发送缓冲区剩余空间大小(不足放入剩余发送缓冲区)，send就一直 等待协议把s发送缓冲区中的数据发送完；
+  如果len小于发送缓冲区剩余空间大小，就仅仅把buf中的数据copy到发送缓冲区的剩余空间里(send函数返回时并不代表send把s的缓冲区的数据(buf)传到连接的另一端，而是协议传输的，send仅仅是把buf中的数据copy到s的发送缓冲区的剩余空间中)。 
+  
+如果send函数copy数据成功，就返回实际copy的字节数，如果send在copy数据时出现错误，那么send就返回SOCKET_ERROR；
+如果send在等待协议传送数据时断开网络，那么send函数也返回SOCKET_ERROR。
+要注意send函数把buf中的数据成功copy到s的发送缓冲的剩余空间后就返回了，但是此时这些数据并不一定马上被传到连接的另一端。
+如果协议在后续的传送过程中出现网络错误的话，那么下一个Socket函数就会返回SOCKET_ERROR.(每一个除send之外的Socket函数在执行的最开始总要先等待套接字的发送缓冲区中的数据被协议传送完毕才能继续，如果在等待时出现网络错误，那么该Socket函数就返回SOCKET_ERROR)。
+ 
+recv函数:
+int recv (SOCKET s, char* buf   ,int len,   int flags);
+参数描述：
+SOCKET s         发送端套接字描述符
+const char *buf  应用程序存放接收的数据的缓冲区
+int len          buf的长度
+int flags        一般置为0即可
+
+同步Socket的recv函数的执行流程如下:
+调用recv函数时，recv先等待s的发送缓冲区中的数据被协议发送完毕:                                                                                                                                 
+a.如果协议在传送s的发送缓冲区中的数据时出现网络错误，那么recv函数返回SOCKET_ERROR；               
+b.如果s的发送缓冲区中的数据被协议成功发送完毕或者没有数据时，recv先检查套接字s的接收缓冲区的情况:                                                                                                                                                                                               
+  如果s接收缓冲区中没有数据或者协议正在接收数据，那么recv就一直等待，直到协议把数据接收完毕。
+  当协议把数据接收完毕，recv函数就把s的接收缓冲区中的数据copy到buf中(注意协议接收到的数据可能大于buf的长度,所以在这种情况下要调用几次recv函数才能把s的接收缓冲中的数据copy完。recv函数仅仅是copy数据，真正接收数据是协议来完成的)，
+  recv函数返回其实际copy的字节数。                                                                                                              
+如果recv在copy时出错，那么它返回SOCKET_ERROR；
+如果recv函数在等待协议接收数据时网络中断了，那么它返回0。
 
 
 4.主要三个服务器方面的问题：
