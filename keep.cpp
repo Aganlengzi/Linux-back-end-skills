@@ -602,6 +602,48 @@ delete [] arr;      // 销毁数组中的元素，然后释放对应的内存空
 注意memset是对内存中的每个字节赋初值，所以在用的时候一般就用来初始化就好了。。。。
 int b[10] = {3}; //只有b[0]被初始化为3，其它都是0
 
+4.1在用户调用malloc之后，系统中发生了什么呢？
+首先明确以下几点：
+
+1）malloc是一个C库中的函数，以glibc来说事。
+>glibc是什么? The GNU C Library, commonly known as glibc, is the GNU Project's implementation of the C standard library.GNU is a recursive acronym for "GNU's Not Unix!", chosen because GNU's design is Unix-like, but differs from Unix by being free software and containing no Unix code. GNU includes an operating system and an extensive collection of computer software. GNU is composed wholly of free software licensed under the GPL.
+2）glibc是用户空间（userspace）的库。
+>用户空间和内核空间的划分是为了安全和控制划分的。涉及到分段和分页式的内存管理方式，Linux内核主要使用分页式的内存管理，按照两级权限和四段来理解（包括用户空间代码段，用户空间数据段，内核空间代码段和内核空间数据段），在相应的段描述符中有相应的权限位的设置。
+3）内存管理中可以理解为分两层，一层是内存地址空间范围，一层是物理地址。而且如果想要使用物理内存，必须要有内存地址空间的虚拟地址并且要和物理地址映射。
+>在用户程序中想要分配动态内存的时候，首先分配的是内存地址空间，只是一个类似于银行卡上内钱数的数字（只要我们有足够大的数字，可以进行交易），然后在真正使用内存（读/写等）的时候（会产生缺页中断）才会真正映射到物理内存（真正进行金银的交易）。为了安全性，内核不信任用户空间的进程，userspace中的应用只能够分配内存地中空间范围，而只有内核kernel space才能够分配内存（内核相当于国家，进行金银的管理，而用户只能进行纸币或者数字的交易）。
+4）进程
+>我们写的userspace的代码（应用程序）在内核的管理中最小的资源分配单位是进程，这里不用涉及到调度，只涉及资源分配，也就不用管其他的了。进程在内核中的表示是一个task_struct结构体的实例。其中保存了此进程的所有的资源信息。其中当然包括内存管理相关的部分，mm_struct。
+5）进程的内存地址空间
+>进程可以使用整个虚拟内存空间（32位机器上是0-3G），但是考虑到一个进程实际使用的内存空间并不是太多，所以一开始进程的地址空间并不是我们所说的0-3G（这只是进程最大能够达到的内存地址空间），实际的话，会有一个system break，超过这个范围的地址是unmap的地址范围，实际上也就是可以用而没有用的地址范围。也就是后面讲到如果一开始的时候分配的地址空间范围不够用的情况下可以进行扩展的地方，UNIX-like的系统中利用brk或者sbrk或者mmap来扩展process可用的未开垦的地址空间。
+>UNIX-based systems have two basic system calls that map in additional memory:
+
+	* brk:brk() is a very simple system call. Remember the system break, the location that is the edge of mapped memory for the process?brk() simply moves that location forward or backward, to add or remove memory to or from the process.
+	* mmap:mmap(), or "memory map," is like brk() but is much more flexible. First, it can map memory in anywhere, not just at the end of the process. Second, not only can it map virtual addresses to physical RAM or swap, it can map them to files and file locations so that reading and writing memory addresses will read and write data to and from files. Here, however, we are only concerned with mmap's ability to add mapped RAM to our process. munmap() does the reverse of mmap().
+
+从malloc实现功能的角度来看：
+void *malloc(size_t size);
+我们调用malloc函数，正常情况下，系统（不是只内核）分配了size字节大小的空间，并返回了指向这块空间的指针。
+然后我们就开始使用这块动态内存了。
+
+这里我们重点关心“系统如何分配了size字节大小的空间”？
+
+malloc分配内存空间实际上并不是我们想的直接到内核中拿一块内存过来用。也不一定访问内核空间。
+malloc是在userspace的库函数，它的工作在userspace中完成。它只是向glibc请求内存空间（虚拟地址空间）。
+也就是glibc持有一定量的内存地址空间（注意不是实际的物理内存空间）。主要是通过brk和sbrk或者mmap向内核批发的，然后卖给应用使用。
+1）所以malloc首先向glibc查询是否有足够大小的内存空间可用，如果可用，分配返回就好了，malloc函数也就完成了。上面已经说过，真正使用的时候才会产生缺页中断由内核来分配实际的物理内存。
+2）如果glibc中的内存地址空间不够分配了，那么malloc将会触发glic的批发操作：brk或者sbrk或者mmap。
+3）brk、sbrk或者mmap会修改这个进程的内存地址空间相关的信息，task_struct中的mm_struct，相当于进程映射的空间变多了，glibc持有的空间变大了，可以够分配给malloc了。
+4）最终上层应用程序中语句开始使用这块分配的内存的时候，触发缺页中断，内核分配物理内存。
+以上。
+
+[1] http://man7.org/linux/man-pages/man3/malloc.3.html
+[2] http://www.linuxquestions.org/questions/linux-kernel-70/what-kernel-do-if-user-call-malloc-function-in-user-space-733790/
+[3] http://www.ibm.com/developerworks/linux/library/l-memory/
+
+
+
+
+
 5、各类库函数必须非常熟练的实现
 
 6、哪些库函数属于高危函数，为什么？（strcpy等等）
@@ -609,6 +651,8 @@ int b[10] = {3}; //只有b[0]被初始化为3，其它都是0
 1、一个String类的完整实现必须很快速写出来（注意：赋值构造，operator=是关键）
 class String
 {
+private:
+	char *  
 
 }
 
