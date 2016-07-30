@@ -1382,3 +1382,26 @@ b.如果s的发送缓冲区中的数据被协议成功发送完毕或者没有�
 a.从接收包，解包，提内容，存数据库期间会出现哪些异常，怎么解决；
 b.服务器宕机，为什么客户端还是可以工作，实现模型（加额外路由器进行管理）；
 c.怎么实现多服务器负载均衡。
+
+=================================
+UNIX时间戳：
+Epoch指的是一个特定的时间：1970-01-01 00:00:00 UTC。
+Unix时间戳（英文为Unix time, POSIX time 或 Unix timestamp）
+是从Epoch（1970年1月1日00:00:00 UTC）开始所经过的秒数，不考虑闰秒。
+可以利用gettimeofday(timeval* tv, NULL)函数获得。
+/* Get the current time of day and timezone information,
+   putting it into *TV and *TZ. If TZ is NULL, *TZ is not filled.
+   Returns 0 on success, -1 on errors.
+   NOTE: This form of timezone information is obsolete.
+   Use the functions and variables declared in <time.h> instead. */
+extern int gettimeofday (struct timeval *__restrict __tv,
+                         __timezone_ptr_t __tz) __THROW __nonnull ((1));
+其中struct timeval如下，头文件sys/time.h:
+struct timeval
+{
+__time_t tv_sec;        /* Seconds. */
+__suseconds_t tv_usec;  /* Microseconds. */
+};
+tv_sec为Epoch到创建struct timeval时的秒数，
+tv_usec为微秒数，即秒后面的零头
+
