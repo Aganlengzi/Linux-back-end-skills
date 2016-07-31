@@ -1404,4 +1404,44 @@ __suseconds_t tv_usec;  /* Microseconds. */
 };
 tv_sec为Epoch到创建struct timeval时的秒数，
 tv_usec为微秒数，即秒后面的零头
-
+==============================
+explicit关键字
+C++中，一个参数的构造函数(或者除了第一个参数外其余参数都有默认值的多参构造函数)， 承担了两个角色。
+1是个构造器，
+2是个默认且隐含的类型转换操作符。
+class Test1
+{
+public:
+    Test1(int n，int x = 1)
+    {
+        num=n;
+    }//普通构造函数
+private:
+    int num;
+};
+如果在函数体中按照下面的方式使用Test1
+Test1 t1=12;//隐式调用其构造函数,成功
+当然标准应该是这么使用的
+Test1 t1(12);//显式调用其构造函数
+这就是上面讲到的这种构造函数的使用的特殊之处。
+在有些情况下，并不想让这种构造函数有这样的不明确的行为时应该怎么办？
+使用explicit关键字：
+class Test2
+{
+public:
+    explicit Test2(int n)
+    {
+        num=n;
+    }//explicit(显式)构造函数
+private:
+    int num;
+};
+这样的情况下，隐式调用被破坏
+int main()
+{
+    Test1 t1=12;//隐式调用其构造函数,成功
+    Test2 t2=12;//编译错误,不能隐式调用其构造函数
+    Test2 t2(12);//显式调用成功
+    return 0;
+}
+以上就是关于关键字explicit的使用
