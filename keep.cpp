@@ -1,4 +1,7 @@
 ﻿Linux后台开发应该具备技能
+高并发Linux服务器设置
+http://blog.sae.sina.com.cn/archives/1988
+
 一、linux和os:
 1、命令：netstat tcpdump ipcs ipcrm  这四个命令的熟练掌握程度基本上能体现实际开发和调试程序的经验
 ifconfig：网络接口的属性
